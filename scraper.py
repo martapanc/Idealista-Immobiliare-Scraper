@@ -27,6 +27,7 @@ with open("data/immobiliare_urls.txt", "r") as url_file:
 
                 # Price
                 price = soup.find("li", class_="in-detail__mainFeaturesPrice").text.strip()
+                price = price.replace("€", "").replace(".", "").strip()
 
                 # Rooms
                 li_element = soup.find("li", {"aria-label": "locali"})
