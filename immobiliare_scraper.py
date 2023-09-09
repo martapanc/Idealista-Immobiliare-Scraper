@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup
 import csv
 from datetime import datetime
 
-headers = ["Title", "Link", "Type", "State", "Asking", "Notes", "Where",
+headers = ["Title", "Link", "Type", "Asking", "Notes", "Where",
            "Size (garden)", "Rooms", "Rating", "Plan", "Agent", "Status"]
 
 with open("data/immobiliare_urls.txt", "r") as url_file:
@@ -39,9 +39,6 @@ with open("data/immobiliare_urls.txt", "r") as url_file:
                 div_element = li_element.find("div", class_="in-feat__data")
                 size = div_element.text.strip()
 
-                # Description
-                description = soup.find("p", class_="in-description__title").text.strip()
-
                 # Type
                 dt_element = soup.find("dt", text="tipologia")
                 dd_element = dt_element.find_next_sibling("dd")
@@ -49,8 +46,11 @@ with open("data/immobiliare_urls.txt", "r") as url_file:
 
                 # Agent
                 div_element = soup.find("div", class_="in-referent")
-                a_element = div_element.find("a")
-                agent = a_element.text.strip()
+                if div_element is not None:
+                    a_element = div_element.find("a")
+                    agent = a_element.text.strip()
+                else:
+                    agent = "Privato"
 
                 # Print the extracted data
                 print("Url", url)
@@ -58,12 +58,11 @@ with open("data/immobiliare_urls.txt", "r") as url_file:
                 print("Price:", price)
                 print("Size:", size)
                 print("Rooms:", rooms)
-                print("Description:", description)
                 print("Type:", property_type)
                 print("Agent:", agent)
                 print("-------")
 
-                writer.writerow([title, url, property_type, description, price, "", "", size, rooms, "", "", agent, ""])
+                writer.writerow([title, url, property_type, price, "", "", size, rooms, "", "", agent, ""])
 
             else:
                 print("Failed to retrieve the webpage. Status code:", response.status_code)
