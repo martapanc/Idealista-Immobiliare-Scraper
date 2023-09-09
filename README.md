@@ -1,5 +1,5 @@
 # Web Scraper 🏠
-## Gather simple information from Immobiliare and Idealista and print it to a CSV file
+## Gather simple information from [Immobiliare](https://immobiliare.it) and [Idealista](https://www.idealista.it/) and print it to a CSV file
 
 
 ### Setup
