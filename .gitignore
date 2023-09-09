@@ -320,7 +320,7 @@ poetry.toml
 # LSP config files
 pyrightconfig.json
 
-data/urls.txt
+data/*urls.txt
 output/*
 
 # End of https://www.toptal.com/developers/gitignore/api/python,macos,intellij
