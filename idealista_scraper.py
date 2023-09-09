@@ -54,7 +54,10 @@ with open("data/idealista_urls.txt", "r") as url_file:
 
                 # Agent
                 a_element = soup.find("a", class_="about-advertiser-name")
-                agent = a_element.text.strip()
+                if a_element is not None:
+                    agent = a_element.text.strip()
+                else:
+                    agent = "Privato"
 
                 # Print the extracted data
                 print("Url", url)
