@@ -44,7 +44,7 @@ with open(output_filename, mode="w", newline="") as csv_file:
             # Rooms & Size
             div_element = soup.find("div", class_="info-features")
             spans = div_element.find_all("span")
-            size = spans[0].text.strip()
+            size = spans[0].text.replace("m2", "m²").strip()
             rooms = spans[1].text.replace("locali", "").strip()
 
             # Type
@@ -67,11 +67,11 @@ with open(output_filename, mode="w", newline="") as csv_file:
             print("Rooms:", rooms)
             print("Type:", property_type)
             print("Agent:", agent)
-            print("-------")
 
             writer.writerow([title, url, property_type, price, "", "", size, rooms, "", "", agent, ""])
-
         else:
-            print("Failed to retrieve the webpage. Status code:", response.status_code)
+            print(url, "Failed to retrieve the webpage. Status code:", response.status_code)
+
+        print("-------")
 
 print(f"CSV file '{output_filename}' has been created with all the extracted values and headers.")
