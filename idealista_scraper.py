@@ -1,36 +1,36 @@
-import os
-import requests
-from bs4 import BeautifulSoup
 import csv
+import os
+import time
+import random
 from datetime import datetime
+from bs4 import BeautifulSoup
+import requests
 from dotenv import load_dotenv
 
 load_dotenv()
 
+api_key = os.environ["SCRAPER_API_KEY"]
+
 headers = ["Title", "Link", "Type", "Asking", "Notes", "Where",
            "Size (garden)", "Rooms", "Rating", "Plan", "Agent", "Status"]
-
-api_key = os.environ["ZENROWS_API_KEY"]
 
 with open("data/idealista_urls.txt", "r") as url_file:
     urls = [line.strip() for line in url_file if line.strip()]
 
-    os.makedirs("output", exist_ok=True)
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    output_filename = f"output/idealista_{timestamp}.csv"
+os.makedirs("output", exist_ok=True)
+timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+output_filename = f"output/idealista_{timestamp}.csv"
 
 with open(output_filename, mode="w", newline="") as csv_file:
     writer = csv.writer(csv_file)
     writer.writerow(headers)
 
     for url in urls:
-        params = {
-            'url': url,
-            'apikey': api_key,
-            'autoparse': 'true',
-        }
-
-        response = requests.get('https://api.zenrows.com/v1/', params=params)
+        response = requests.get(
+            "https://api.scraperapi.com",
+            params={"api_key": api_key, "url": url, "render": "true"},
+        )
+        time.sleep(random.uniform(3, 7))
 
         if response.status_code == 200:
             soup = BeautifulSoup(response.text, 'html.parser')
@@ -72,6 +72,7 @@ with open(output_filename, mode="w", newline="") as csv_file:
             writer.writerow([title, url, property_type, price, "", "", size, rooms, "", "", agent, ""])
         else:
             print(url, "Failed to retrieve the webpage. Status code:", response.status_code)
+            print("Response:", response.text[:500])
 
         print("-------")
 
