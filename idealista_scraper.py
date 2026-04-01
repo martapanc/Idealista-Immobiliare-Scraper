@@ -1,20 +1,21 @@
+import os
 import requests
 from bs4 import BeautifulSoup
 import csv
 from datetime import datetime
-import yaml
+from dotenv import load_dotenv
 
+load_dotenv()
 
 headers = ["Title", "Link", "Type", "Asking", "Notes", "Where",
            "Size (garden)", "Rooms", "Rating", "Plan", "Agent", "Status"]
 
-with open("config.yml", "r") as yaml_file:
-    config = yaml.safe_load(yaml_file)
-    api_key = config.get("zenrows_api_key")
+api_key = os.environ["ZENROWS_API_KEY"]
 
 with open("data/idealista_urls.txt", "r") as url_file:
     urls = [line.strip() for line in url_file if line.strip()]
 
+    os.makedirs("output", exist_ok=True)
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     output_filename = f"output/idealista_{timestamp}.csv"
 
@@ -26,7 +27,7 @@ with open(output_filename, mode="w", newline="") as csv_file:
         params = {
             'url': url,
             'apikey': api_key,
-            'premium_proxy': 'true',
+            'autoparse': 'true',
         }
 
         response = requests.get('https://api.zenrows.com/v1/', params=params)

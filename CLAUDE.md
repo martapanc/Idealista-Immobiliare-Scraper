@@ -29,12 +29,12 @@ python3 idealista_scraper.py
 
 ## Configuration
 
-`config.yml` (git-ignored) must exist for the Idealista scraper with a ZenRows API key:
-```yaml
-zenrows_api_key: <your_api_key>
+A `.env` file (git-ignored) must exist for the Idealista scraper with a ZenRows API key:
+```
+ZENROWS_API_KEY=your_api_key_here
 ```
 
-Copy `config-local.yml` as a starting point. Get a ZenRows API key from [app.zenrows.com](https://app.zenrows.com/).
+Copy `.env.example` as a starting point. Get a ZenRows API key from [app.zenrows.com](https://app.zenrows.com/).
 
 ## Architecture
 

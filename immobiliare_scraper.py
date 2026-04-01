@@ -1,3 +1,4 @@
+import os
 import requests
 from bs4 import BeautifulSoup
 import csv
@@ -9,6 +10,7 @@ headers = ["Title", "Link", "Type", "Asking", "Notes", "Where",
 with open("data/immobiliare_urls.txt", "r") as url_file:
     urls = [line.strip() for line in url_file if line.strip()]
 
+    os.makedirs("output", exist_ok=True)
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     output_filename = f"output/immobiliare_{timestamp}.csv"
 
