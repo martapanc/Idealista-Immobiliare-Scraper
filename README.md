@@ -3,10 +3,11 @@
 
 
 ### Setup
-- [Idealista only] Grap API key from [ZenRows](https://app.zenrows.com/), and place it into `config.yml`
-- Urls to be parsed should be placed in a file named `idealista_urls.txt` or `immobiliare_urls.txt` inside `data/`, one on each line
+- [Idealista only] Grab API key from [ZenRows](https://app.zenrows.com/), and place it into `config.yml`
+- urls to be parsed should be placed in a file named `idealista_urls.txt` or `immobiliare_urls.txt` inside `data/`, one on each line
 
 ```bash
+python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
