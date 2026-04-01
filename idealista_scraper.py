@@ -28,7 +28,7 @@ with open(output_filename, mode="w", newline="") as csv_file:
     for url in urls:
         response = requests.get(
             "https://api.scraperapi.com",
-            params={"api_key": api_key, "url": url, "render": "true"},
+            params={"api_key": api_key, "url": url},
         )
         time.sleep(random.uniform(3, 7))
 
