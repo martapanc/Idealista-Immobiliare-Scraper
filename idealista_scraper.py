@@ -1,15 +1,70 @@
+import asyncio
 import csv
 import os
-import time
 import random
+import time
 from datetime import datetime
+from typing import Optional
+
 from bs4 import BeautifulSoup
-import requests
-from dotenv import load_dotenv
+from patchright.async_api import async_playwright
 
-load_dotenv()
 
-api_key = os.environ["SCRAPER_API_KEY"]
+async def _fetch_html(url: str) -> Optional[str]:
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(
+            headless=False,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+            ],
+        )
+        context = await browser.new_context(
+            viewport={"width": 1440, "height": 900},
+            locale="es-ES",
+            timezone_id="Europe/Andorra",
+            user_agent=(
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/131.0.0.0 Safari/537.36"
+            ),
+            extra_http_headers={
+                "Accept-Language": "es-ES,es;q=0.9,it;q=0.8",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                "Sec-Fetch-Site": "none",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-User": "?1",
+                "Sec-Fetch-Dest": "document",
+            },
+        )
+        html = None
+        try:
+            page = await context.new_page()
+
+            # Warm up session on homepage first so DataDome sets cookies
+            await page.goto("https://www.idealista.com/", wait_until="domcontentloaded", timeout=30000)
+            await page.wait_for_timeout(random.randint(2000, 4000))
+
+            # Navigate to the listing
+            response = await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            if response is None or response.status >= 400:
+                print(f"  HTTP {response.status if response else 'None'} for {url}")
+            else:
+                await page.wait_for_timeout(random.randint(1500, 3000))
+                await page.evaluate("window.scrollBy(0, window.innerHeight * 0.6)")
+                await page.wait_for_timeout(random.randint(800, 1800))
+                html = await page.content()
+        except Exception as exc:
+            print(f"  Browser error fetching {url}: {exc}")
+        finally:
+            await browser.close()
+        return html
+
+
+def fetch_page(url: str) -> Optional[str]:
+    return asyncio.run(_fetch_html(url))
+
 
 headers = ["Title", "Link", "Type", "Asking", "Notes", "Where",
            "Size (garden)", "Rooms", "Rating", "Plan", "Agent", "Status"]
@@ -26,14 +81,11 @@ with open(output_filename, mode="w", newline="") as csv_file:
     writer.writerow(headers)
 
     for url in urls:
-        response = requests.get(
-            "https://api.scraperapi.com",
-            params={"api_key": api_key, "url": url},
-        )
-        time.sleep(random.uniform(3, 7))
+        time.sleep(random.uniform(4, 9))
+        html = fetch_page(url)
 
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.text, 'html.parser')
+        if html is not None:
+            soup = BeautifulSoup(html, 'html.parser')
 
             # Title
             title = soup.find("span", class_="main-info__title-main").text.strip()
@@ -71,8 +123,7 @@ with open(output_filename, mode="w", newline="") as csv_file:
 
             writer.writerow([title, url, property_type, price, "", "", size, rooms, "", "", agent, ""])
         else:
-            print(url, "Failed to retrieve the webpage. Status code:", response.status_code)
-            print("Response:", response.text[:500])
+            print(url, "Failed to retrieve the webpage.")
 
         print("-------")
 

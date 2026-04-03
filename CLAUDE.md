@@ -29,12 +29,11 @@ python3 idealista_scraper.py
 
 ## Configuration
 
-A `.env` file (git-ignored) must exist for the Idealista scraper with a ZenRows API key:
-```
-ZENROWS_API_KEY=your_api_key_here
-```
+No API keys required. After `pip install`, run once to download the patched Chromium binary:
 
-Copy `.env.example` as a starting point. Get a ZenRows API key from [app.zenrows.com](https://app.zenrows.com/).
+```bash
+patchright install chromium
+```
 
 ## Architecture
 
