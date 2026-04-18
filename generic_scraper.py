@@ -270,9 +270,62 @@ def parse_detail(soup, url, rules, site_id):
         field = rule["field_name"]
 
         if field == "images":
-            css = rule["selector"]
-            if css.startswith("css:"):
-                css = css[4:]
+            selector = rule["selector"]
+
+            # script:SCRIPT_ID:REGEX — extract UUIDs/paths from a JSON script blob.
+            # attr is used as a URL template with {} placeholder for the captured group.
+            if selector.startswith("script:"):
+                _, script_id, pattern = selector.split(":", 2)
+                # "*" searches all inline scripts (e.g. Next.js RSC payloads)
+                if script_id == "*":
+                    script_text = " ".join(
+                        t.get_text() for t in soup.find_all("script")
+                    )
+                else:
+                    tag = soup.find("script", id=script_id)
+                    script_text = tag.get_text() if tag else ""
+                if script_text:
+                    url_tpl = rule["attr"] or "{}"
+                    seen = set()
+                    if pattern.startswith("json_array:"):
+                        # Find "KEY":[...] and collect every string item
+                        key = pattern[11:]
+                        am = re.search(
+                            r'"' + re.escape(key) + r'":\[([^\]]+)\]',
+                            script_text,
+                        )
+                        if am:
+                            uuids = re.findall(
+                                r'[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}'
+                                r'-[a-f0-9]{4}-[a-f0-9]{12}',
+                                am.group(1),
+                            )
+                            for val in uuids:
+                                if val not in seen:
+                                    seen.add(val)
+                                    photo_url = url_tpl.format(val)
+                                    if photo_url not in photo_urls:
+                                        photo_urls.append(photo_url)
+                    else:
+                        for m in re.finditer(pattern, script_text):
+                            val = (m.group(1) if m.lastindex else m.group(0)).strip()
+                            if val and val not in seen:
+                                seen.add(val)
+                                photo_url = url_tpl.format(val)
+                                if photo_url not in photo_urls:
+                                    photo_urls.append(photo_url)
+                # Fallback: scan img[src] for the same domain
+                if not photo_urls:
+                    domain_m = re.search(r"https?://([^/]+)", rule["attr"] or "")
+                    if domain_m:
+                        for img in soup.select(f"img[src*='{domain_m.group(1)}']"):
+                            src = img.get("src", "")
+                            if src and src not in photo_urls:
+                                photo_urls.append(src)
+                continue
+
+            # Standard CSS selector
+            css = selector[4:] if selector.startswith("css:") else selector
             a = rule["attr"] or "src"
             for img in soup.select(css):
                 src = img.get(a, "")
@@ -334,7 +387,21 @@ def iter_listing_urls(site):
 # Seed data — Engel & Völkers Andorra
 # ---------------------------------------------------------------------------
 def seed_engelvoelkers(conn):
-    if conn.execute("SELECT 1 FROM sites WHERE name = ?", ("Engel & Völkers Andorra",)).fetchone():
+    existing = conn.execute(
+        "SELECT id FROM sites WHERE name = ?", ("Engel & Völkers Andorra",)
+    ).fetchone()
+
+    if existing:
+        site_id = existing[0]
+        conn.execute(
+            "UPDATE field_rules SET selector = ?, attr = ? WHERE site_id = ? AND field_name = 'images'",
+            (
+                "script:*:json_array:uploadCareImageIds",
+                "https://uploadcare.engelvoelkers.com/{}/-/format/webp/-/stretch/off/-/progressive/yes/-/resize/1440x/-/quality/lighter/",
+                site_id,
+            ),
+        )
+        conn.commit()
         return
 
     conn.execute("""
@@ -372,7 +439,8 @@ def seed_engelvoelkers(conn):
         ("agent_name",    "regex:(?s)(?:Contacta con|Agente)\\s+([^\\n\\|<]{2,50})",                                      None,   None,         0, None),
         ("agent_phone",   "a[href^='tel:']",                                                                               "href", "tel:(.*)",   0, None),
         ("agent_email",   "a[href^='mailto:']",                                                                            "href", "mailto:(.*)",0, None),
-        ("images",        "img[src*='ucarecdn.com']",                                                                      "src",  None,         1, None),
+        # script: extracts all UUIDs from __NEXT_DATA__ JSON; attr = URL template
+        ("images",        "script:*:json_array:uploadCareImageIds",                         "https://uploadcare.engelvoelkers.com/{}/-/format/webp/-/stretch/off/-/progressive/yes/-/resize/1440x/-/quality/lighter/", None, 1, None),
     ]
 
     conn.executemany("""
@@ -461,6 +529,22 @@ def mark_photo_downloaded(conn, url, local_path):
     conn.commit()
 
 
+def _photo_filename(url):
+    """Derive a stable, unique filename from a photo URL."""
+    # Prefer UUID (Uploadcare and similar CDNs embed it as the first path segment)
+    m = re.search(
+        r'[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}', url
+    )
+    if m:
+        ext = "webp" if "webp" in url else "jpg"
+        return f"{m.group(0)}.{ext}"
+    # Fall back to last non-empty path segment that has a file extension
+    for part in reversed(url.rstrip("/").split("/")):
+        if part and "." in part:
+            return part.split("?")[0]
+    return "photo.jpg"
+
+
 def site_slug(name):
     return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
@@ -471,7 +555,7 @@ def download_photos(conn, listing_id, photo_urls, slug=""):
         return
     print(f"    Downloading {len(pending)} photo(s)…")
     for url in pending:
-        filename = url.split("/")[-1].split("?")[0] or "photo.jpg"
+        filename = _photo_filename(url)
         dest = os.path.join(PHOTOS_DIR, slug, str(listing_id), filename)
         if os.path.exists(dest):
             mark_photo_downloaded(conn, url, dest)
@@ -600,7 +684,7 @@ def main():
         if pending:
             print(f"\nRetrying {len(pending)} undownloaded photo(s)…")
             for listing_id, url, sname in pending:
-                filename = url.split("/")[-1].split("?")[0] or "photo.jpg"
+                filename = _photo_filename(url)
                 dest = os.path.join(PHOTOS_DIR, site_slug(sname), str(listing_id), filename)
                 if os.path.exists(dest):
                     mark_photo_downloaded(conn, url, dest)
