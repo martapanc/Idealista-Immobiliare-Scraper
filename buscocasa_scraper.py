@@ -27,7 +27,7 @@ from urllib.parse import urljoin
 # Configuration
 # ---------------------------------------------------------------------------
 DB_PATH = "buscocasa.db"
-PHOTOS_DIR = "photos"
+PHOTOS_DIR = os.path.join("photos", "buscocasa")
 DELAY = 1.0          # seconds between HTTP requests
 SKIP_PHOTOS = False  # set True to only store photo URLs, not download them
 
