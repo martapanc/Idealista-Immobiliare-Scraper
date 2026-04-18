@@ -17,8 +17,10 @@ Usage:
 """
 
 import argparse
+import importlib
 import json
 import os
+import pathlib
 import re
 import sqlite3
 import time
@@ -117,77 +119,18 @@ def init_db(conn):
 
 
 # ---------------------------------------------------------------------------
-# Seed helpers
+# Site seeding — auto-discovered from sites/*.py
 #
-# Selectors use the "regex:" prefix for full-text extraction where CSS classes
-# are unavailable.  Once you inspect a site in devtools and find stable
-# data-testid / class names, update the relevant field_rules rows in the DB
-# directly — no code change needed.
+# Each module must export a seed(conn) function.  Adding a new estate agent
+# requires only creating a new file in sites/ — no changes here.
 # ---------------------------------------------------------------------------
-def seed_sothebys(conn):
-    existing = conn.execute(
-        "SELECT id FROM sites WHERE name = ?", ("Andorra Sotheby's",)
-    ).fetchone()
-
-    if existing:
-        site_id = existing[0]
-        # Migrations: update selectors that have been corrected
-        migrations = {
-            "rooms":      "regex:(?i)bedrooms?\\s+(\\d+)",
-            "bathrooms":  "regex:(?i)bathrooms?\\s+(\\d+)",
-            "size_m2":    "regex:(?i)area\\s+([\\d\\.]+)\\s*m",
-            "price":      "regex:(?i)price\\s+(consult|[\\d][\\d\\.\\s,]*\\s*€)",
-            "images":     "img[src*='/watermark/'][src$='.jpeg']",
-        }
-        for field, selector in migrations.items():
-            conn.execute(
-                "UPDATE field_rules SET selector = ? WHERE site_id = ? AND field_name = ?",
-                (selector, site_id, field),
-            )
-        conn.execute(
-            "UPDATE sites SET next_page_tpl = ? WHERE name = ? AND next_page_tpl IS NULL",
-            ("{url}?page={n}", "Andorra Sotheby's"),
-        )
-        conn.commit()
-        return
-
-    conn.execute("""
-        INSERT INTO sites (name, base_url, listing_urls, link_pattern, next_page_tpl, active)
-        VALUES (?, ?, ?, ?, ?, 1)
-    """, (
-        "Andorra Sotheby's",
-        "https://www.andorra-sothebysrealty.com",
-        json.dumps([
-            "https://www.andorra-sothebysrealty.com/en/sale-and-rent/-all-types-andorra",
-        ]),
-        r"/en/[^/]+/\d+$",
-        "{url}?page={n}",
-    ))
-    site_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-
-    # (field_name, selector, attr, regex, multi, after_heading)
-    rules = [
-        ("ref",           "url:/(\\d+)$",                              None,   None,                                  0, None),
-        ("title",         "h1",                                         None,   None,                                  0, None),
-        ("price",         "regex:(?i)price\\s+(consult|[\\d][\\d\\.\\s,]*\\s*€)", None, None,                           0, None),
-        ("rooms",         "regex:(?i)bedrooms?\\s+(\\d+)",                None,   None,                                  0, None),
-        ("bathrooms",     "regex:(?i)bathrooms?\\s+(\\d+)",              None,   None,                                  0, None),
-        ("size_m2",       "regex:(?i)area\\s+([\\d\\.]+)\\s*m",         None,   None,                                  0, None),
-        ("description",   "p",                                          None,   None,                                  0, None),
-        ("features",      "li",                                         None,   None,                                  1, "Features"),
-        ("agent_phone",   "a[href^='tel:']",                            "href", "tel:(.*)",                            0, None),
-        ("agent_email",   "a[href^='mailto:']",                         "href", "mailto:(.*)",                         0, None),
-        ("energy_rating", "img[src*='energetica']",                     "src",  r"energetica-(\w+)\.",                 0, None),
-        ("images",        "img[src*='/watermark/'][src$='.jpeg']",      "src",  None,                                  1, None),
-    ]
-
-    conn.executemany("""
-        INSERT INTO field_rules (site_id, field_name, selector, attr, regex, multi, after_heading)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, [(site_id, *r) for r in rules])
-
-    conn.commit()
-    print(f"  Seeded: Andorra Sotheby's (site_id={site_id})")
+def seed_all_sites(conn: sqlite3.Connection) -> None:
+    sites_dir = pathlib.Path(__file__).parent / "sites"
+    for path in sorted(sites_dir.glob("*.py")):
+        if path.name == "__init__.py":
+            continue
+        mod = importlib.import_module(f"sites.{path.stem}")
+        mod.seed(conn)
 
 
 # ---------------------------------------------------------------------------
@@ -384,75 +327,6 @@ def iter_listing_urls(site):
 
 
 # ---------------------------------------------------------------------------
-# Seed data — Engel & Völkers Andorra
-# ---------------------------------------------------------------------------
-def seed_engelvoelkers(conn):
-    existing = conn.execute(
-        "SELECT id FROM sites WHERE name = ?", ("Engel & Völkers Andorra",)
-    ).fetchone()
-
-    if existing:
-        site_id = existing[0]
-        conn.execute(
-            "UPDATE field_rules SET selector = ?, attr = ? WHERE site_id = ? AND field_name = 'images'",
-            (
-                "script:*:json_array:uploadCareImageIds",
-                "https://uploadcare.engelvoelkers.com/{}/-/format/webp/-/stretch/off/-/progressive/yes/-/resize/1440x/-/quality/lighter/",
-                site_id,
-            ),
-        )
-        conn.commit()
-        return
-
-    conn.execute("""
-        INSERT INTO sites (name, base_url, listing_urls, link_pattern, next_page_tpl, active)
-        VALUES (?, ?, ?, ?, ?, 1)
-    """, (
-        "Engel & Völkers Andorra",
-        "https://www.engelvoelkers.com",
-        json.dumps([
-            "https://www.engelvoelkers.com/ad/es/inmuebles/res/compra/inmobiliario",
-        ]),
-        r"/ad/es/exposes/[a-f0-9-]+",
-        "{url}?page={n}",
-    ))
-    site_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-
-    # Price: "2.500.000 €" or "Precio a consultar"
-    # Specs appear as "4 Dormitorios", "3 Baños", "~345 m² Superficie total"
-    # Reference: "ID de la propiedad: W-049FBE"
-    # Images: Uploadcare CDN (ucarecdn.com)
-    # NOTE: Replace any selector here with [data-testid="..."] once confirmed in devtools
-    rules = [
-        # (field_name, selector, attr, regex, multi, after_heading)
-        ("ref",           "regex:ID de la propiedad:\\s*(\\S+)",                                                          None,   None,         0, None),
-        ("title",         "h1",                                                                                            None,   None,         0, None),
-        ("price",         "regex:(?i)([\\d][\\d\\.\\s]*€|precio a consultar)",                                            None,   None,         0, None),
-        ("operation",     "regex:(?i)(venta|alquiler)",                                                                    None,   None,         0, None),
-        ("property_type", "regex:(?i)(casa unifamiliar|piso|[aá]tico|local|terreno|parking|chalet|villa|d[uú]plex|finca)", None,   None,         0, None),
-        ("parish",        "regex:(?i)(La Massana|Andorra la Vella|Escaldes[- ]Engordany|Ordino|Canillo|Sant Juli[aà]|Encamp|Pas de la Casa)", None, None, 0, None),
-        ("rooms",         "regex:(\\d+)\\s*[Dd]ormitorio",                                                                None,   None,         0, None),
-        ("bathrooms",     "regex:(\\d+)\\s*[Bb]a[ñn]o",                                                                   None,   None,         0, None),
-        ("size_m2",       "regex:~?([\\d\\.]+)\\s*m[²2]\\s*Superficie total",                                             None,   None,         0, None),
-        ("terrace_m2",    "regex:~?([\\d\\.]+)\\s*m[²2]\\s*Superficie terraza",                                           None,   None,         0, None),
-        ("description",   "p",                                                                                             None,   None,         0, None),
-        ("agent_name",    "regex:(?s)(?:Contacta con|Agente)\\s+([^\\n\\|<]{2,50})",                                      None,   None,         0, None),
-        ("agent_phone",   "a[href^='tel:']",                                                                               "href", "tel:(.*)",   0, None),
-        ("agent_email",   "a[href^='mailto:']",                                                                            "href", "mailto:(.*)",0, None),
-        # script: extracts all UUIDs from __NEXT_DATA__ JSON; attr = URL template
-        ("images",        "script:*:json_array:uploadCareImageIds",                         "https://uploadcare.engelvoelkers.com/{}/-/format/webp/-/stretch/off/-/progressive/yes/-/resize/1440x/-/quality/lighter/", None, 1, None),
-    ]
-
-    conn.executemany("""
-        INSERT INTO field_rules (site_id, field_name, selector, attr, regex, multi, after_heading)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, [(site_id, *r) for r in rules])
-
-    conn.commit()
-    print(f"  Seeded: Engel & Völkers Andorra (site_id={site_id})")
-
-
-# ---------------------------------------------------------------------------
 # HTTP helpers
 # ---------------------------------------------------------------------------
 _session = requests.Session()
@@ -627,8 +501,7 @@ def main():
     os.makedirs(PHOTOS_DIR, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     init_db(conn)
-    seed_sothebys(conn)
-    seed_engelvoelkers(conn)
+    seed_all_sites(conn)
 
     if args.list_sites:
         rows = conn.execute(
