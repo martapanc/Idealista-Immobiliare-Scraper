@@ -149,10 +149,15 @@ def _container_after_heading(soup, heading_text):
 def _extract_one(el, attr, regex):
     val = el.get(attr, "") if attr else el.get_text(strip=True)
     if regex and val:
-        m = re.search(regex, val)
-        if not m:
-            return ""
-        val = (m.group(1) if m.lastindex else m.group(0)).strip()
+        if regex.startswith("sub:"):
+            # sub:PATTERN:REPLACEMENT — apply re.sub instead of a capture
+            _, pattern, replacement = regex.split(":", 2)
+            val = re.sub(pattern, replacement, val)
+        else:
+            m = re.search(regex, val)
+            if not m:
+                return ""
+            val = (m.group(1) if m.lastindex else m.group(0)).strip()
     return val.strip()
 
 
@@ -269,10 +274,14 @@ def parse_detail(soup, url, rules, site_id):
 
             # Standard CSS selector
             css = selector[4:] if selector.startswith("css:") else selector
-            a = rule["attr"] or "src"
-            for img in soup.select(css):
-                src = img.get(a, "")
+            img_attr = rule["attr"] or "src"
+            img_regex = rule["regex"]
+            for el in soup.select(css):
+                src = el.get(img_attr, "")
                 if src:
+                    if img_regex and img_regex.startswith("sub:"):
+                        _, pattern, replacement = img_regex.split(":", 2)
+                        src = re.sub(pattern, replacement, src)
                     if not src.startswith("http"):
                         src = urljoin(url, src)
                     if src not in photo_urls:

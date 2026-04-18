@@ -3,7 +3,22 @@ import sqlite3
 
 
 def seed(conn: sqlite3.Connection) -> None:
-    if conn.execute("SELECT 1 FROM sites WHERE name = ?", ("Immobiliaria Galí",)).fetchone():
+    existing = conn.execute(
+        "SELECT id FROM sites WHERE name = ?", ("Immobiliaria Galí",)
+    ).fetchone()
+
+    if existing:
+        site_id = existing[0]
+        migrations = {
+            "price":  (".fichapropiedad-precio", None),
+            "images": (".visorficha-miniaturas li", "cargafoto"),
+        }
+        for field, (selector, attr) in migrations.items():
+            conn.execute(
+                "UPDATE field_rules SET selector = ?, attr = ?, regex = ? WHERE site_id = ? AND field_name = ?",
+                (selector, attr, r"sub:s\.jpg$:.jpg" if field == "images" else None, site_id, field),
+            )
+        conn.commit()
         return
 
     conn.execute("""
@@ -27,7 +42,7 @@ def seed(conn: sqlite3.Connection) -> None:
         # (field_name, selector, attr, regex, multi, after_heading)
         ("ref",           "regex:(?i)reference\\s+(\\S+)",                                                             None,   None,          0, None),
         ("title",         "h1",                                                                                         None,   None,          0, None),
-        ("price",         "regex:([\\d][\\d\\.]*\\s*€(?:/month)?)",                                                    None,   None,          0, None),
+        ("price",         ".fichapropiedad-precio",                                                                        None,   None,          0, None),
         ("operation",     "regex:(?i)(for sale|for rent)",                                                              None,   None,          0, None),
         ("property_type", "regex:(?i)(flat|house|villa|commercial|land|parking|office|chalet|duplex|studio)",           None,   None,          0, None),
         ("parish",        "regex:(?i)(La Massana|Andorra la Vella|Escaldes[- ]Engordany|Ordino|Canillo|Sant Juli[aà]|Encamp|Pas de la Casa)", None, None, 0, None),
@@ -42,7 +57,7 @@ def seed(conn: sqlite3.Connection) -> None:
         ("agent_name",    "regex:(?i)Immobiliaria Gal[íi]",                                                            None,   None,          0, None),
         ("agent_phone",   "a[href^='tel:']",                                                                            "href", "tel:(.*)",    0, None),
         ("agent_email",   "a[href^='mailto:']",                                                                         "href", "mailto:(.*)", 0, None),
-        ("images",        "img[src*='img/ficha/']",                                                                     "src",  None,          1, None),
+        ("images",        ".visorficha-miniaturas li",                                                                    "cargafoto", r"sub:s\.jpg$:.jpg", 1, None),
     ]
 
     conn.executemany("""
