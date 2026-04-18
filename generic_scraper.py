@@ -17,6 +17,7 @@ Usage:
 """
 
 import argparse
+import html
 import importlib
 import json
 import os
@@ -179,6 +180,19 @@ def apply_rule(soup, url, rule):
         if not m:
             return None
         return (m.group(1) if m.lastindex else m.group(0)).strip()
+
+    # Inline script regex — script:SCRIPT_ID:PATTERN  ("*" searches all scripts)
+    if selector.startswith("script:"):
+        _, script_id, pattern = selector.split(":", 2)
+        if script_id == "*":
+            script_text = " ".join(t.get_text() for t in soup.find_all("script"))
+        else:
+            tag = soup.find("script", id=script_id)
+            script_text = tag.get_text() if tag else ""
+        m = re.search(pattern, script_text)
+        if not m:
+            return None
+        return html.unescape((m.group(1) if m.lastindex else m.group(0)).strip()) or None
 
     # Full-text regex
     if selector.startswith("regex:"):
