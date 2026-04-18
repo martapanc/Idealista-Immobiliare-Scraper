@@ -25,14 +25,16 @@ def seed(conn: sqlite3.Connection) -> None:
             "UPDATE sites SET next_page_tpl = ? WHERE name = ? AND next_page_tpl IS NULL",
             ("{url}?page={n}", "Andorra Sotheby's"),
         )
+        conn.execute("UPDATE sites SET slug = 'sothebys' WHERE id = ? AND slug IS NULL", (site_id,))
         conn.commit()
         return
 
     conn.execute("""
-        INSERT INTO sites (name, base_url, listing_urls, link_pattern, next_page_tpl, active)
-        VALUES (?, ?, ?, ?, ?, 1)
+        INSERT INTO sites (name, slug, base_url, listing_urls, link_pattern, next_page_tpl, active)
+        VALUES (?, ?, ?, ?, ?, ?, 1)
     """, (
         "Andorra Sotheby's",
+        "sothebys",
         "https://www.andorra-sothebysrealty.com",
         json.dumps([
             "https://www.andorra-sothebysrealty.com/en/sale-and-rent/-all-types-andorra",

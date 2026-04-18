@@ -18,14 +18,16 @@ def seed(conn: sqlite3.Connection) -> None:
                 "UPDATE field_rules SET selector = ?, attr = ?, regex = ? WHERE site_id = ? AND field_name = ?",
                 (selector, attr, r"sub:s\.jpg$:.jpg" if field == "images" else None, site_id, field),
             )
+        conn.execute("UPDATE sites SET slug = 'gali' WHERE id = ? AND slug IS NULL", (site_id,))
         conn.commit()
         return
 
     conn.execute("""
-        INSERT INTO sites (name, base_url, listing_urls, link_pattern, next_page_tpl, active)
-        VALUES (?, ?, ?, ?, ?, 1)
+        INSERT INTO sites (name, slug, base_url, listing_urls, link_pattern, next_page_tpl, active)
+        VALUES (?, ?, ?, ?, ?, ?, 1)
     """, (
         "Immobiliaria Galí",
+        "gali",
         "https://www.immobiliariagali.com",
         json.dumps([
             "https://www.immobiliariagali.com/?pag=1&idio=2",

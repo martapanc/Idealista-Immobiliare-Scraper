@@ -54,6 +54,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS sites (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     name           TEXT    UNIQUE NOT NULL,
+    slug           TEXT    UNIQUE,     -- short keyword used for photo dirs, e.g. "sothebys"
     base_url       TEXT    NOT NULL,
     listing_urls   TEXT    NOT NULL,   -- JSON array of starting page URLs
     link_pattern   TEXT    NOT NULL,   -- regex that matches a detail-page path
@@ -115,6 +116,10 @@ CREATE TABLE IF NOT EXISTS photos (
 
 def init_db(conn):
     conn.executescript(SCHEMA)
+    # Migrate: add slug column if DB was created before it existed
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(sites)")}
+    if "slug" not in cols:
+        conn.execute("ALTER TABLE sites ADD COLUMN slug TEXT")
     conn.commit()
 
 
@@ -491,7 +496,7 @@ def scrape_site(conn, site):
         )
 
         if not SKIP_PHOTOS:
-            download_photos(conn, listing_id, photo_urls, site_slug(site["name"]))
+            download_photos(conn, listing_id, photo_urls, site["slug"] or site_slug(site["name"]))
 
         time.sleep(DELAY)
 
@@ -533,11 +538,11 @@ def main():
             params.append(args.site)
 
     site_rows = conn.execute(
-        f"SELECT id, name, base_url, listing_urls, link_pattern, next_page_tpl "
+        f"SELECT id, name, slug, base_url, listing_urls, link_pattern, next_page_tpl "
         f"FROM sites {where}",
         params,
     ).fetchall()
-    site_cols = ["id", "name", "base_url", "listing_urls", "link_pattern", "next_page_tpl"]
+    site_cols = ["id", "name", "slug", "base_url", "listing_urls", "link_pattern", "next_page_tpl"]
     sites = [dict(zip(site_cols, r)) for r in site_rows]
 
     if not sites:
@@ -557,7 +562,7 @@ def main():
     # Retry photos left undownloaded from any prior run
     if not SKIP_PHOTOS:
         pending = conn.execute("""
-            SELECT p.listing_id, p.url, s.name
+            SELECT p.listing_id, p.url, s.slug, s.name
             FROM photos p
             JOIN listings l ON l.id = p.listing_id
             JOIN sites s ON s.id = l.site_id
@@ -565,9 +570,9 @@ def main():
         """).fetchall()
         if pending:
             print(f"\nRetrying {len(pending)} undownloaded photo(s)…")
-            for listing_id, url, sname in pending:
+            for listing_id, url, sslug, sname in pending:
                 filename = _photo_filename(url)
-                dest = os.path.join(PHOTOS_DIR, site_slug(sname), str(listing_id), filename)
+                dest = os.path.join(PHOTOS_DIR, sslug or site_slug(sname), str(listing_id), filename)
                 if os.path.exists(dest):
                     mark_photo_downloaded(conn, url, dest)
                     continue

@@ -17,14 +17,16 @@ def seed(conn: sqlite3.Connection) -> None:
                 site_id,
             ),
         )
+        conn.execute("UPDATE sites SET slug = 'engelvoelkers' WHERE id = ? AND slug IS NULL", (site_id,))
         conn.commit()
         return
 
     conn.execute("""
-        INSERT INTO sites (name, base_url, listing_urls, link_pattern, next_page_tpl, active)
-        VALUES (?, ?, ?, ?, ?, 1)
+        INSERT INTO sites (name, slug, base_url, listing_urls, link_pattern, next_page_tpl, active)
+        VALUES (?, ?, ?, ?, ?, ?, 1)
     """, (
         "Engel & Völkers Andorra",
+        "engelvoelkers",
         "https://www.engelvoelkers.com",
         json.dumps([
             "https://www.engelvoelkers.com/ad/es/inmuebles/res/compra/inmobiliario",
